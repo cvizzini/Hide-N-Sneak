@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using HideNSneak;
 
@@ -60,12 +61,15 @@ public sealed class CliApplicationTests : IDisposable
 
         await RunCliAsync("hide", "--input", inputZipPath, "--output", outputPdfPath);
         var inspect = await RunCliAsync("inspect", "--input", outputPdfPath);
+        await using var inputStream = File.OpenRead(inputZipPath);
+        var expectedHash = Convert.ToHexString(await SHA256.HashDataAsync(inputStream)).ToLowerInvariant();
 
         Assert.Equal(0, inspect.ExitCode);
         Assert.Contains("Payload present: yes", inspect.StdOut);
         Assert.Contains($"Payload size: {new FileInfo(inputZipPath).Length} bytes", inspect.StdOut);
         Assert.Contains("Original file name: inspect.zip", inspect.StdOut);
         Assert.Contains("Original extension: .zip", inspect.StdOut);
+        Assert.Contains($"SHA-256: {expectedHash}", inspect.StdOut);
         Assert.Contains("Checksum valid: yes", inspect.StdOut);
     }
 

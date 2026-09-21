@@ -19,21 +19,21 @@ If you do not supply a carrier PDF, Hide-N-Sneak generates a minimal one-page PD
 ## Build
 
 ```powershell
-dotnet build /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/HideNSneak.slnx
+dotnet build .\HideNSneak.slnx
 ```
 
 ```bash
-dotnet build /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/HideNSneak.slnx
+dotnet build ./HideNSneak.slnx
 ```
 
 ## Test
 
 ```powershell
-dotnet test /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/HideNSneak.slnx
+dotnet test .\HideNSneak.slnx
 ```
 
 ```bash
-dotnet test /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/HideNSneak.slnx
+dotnet test ./HideNSneak.slnx
 ```
 
 ## Usage
@@ -41,17 +41,17 @@ dotnet test /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/HideNSneak.slnx
 Run the CLI from the repository root:
 
 ```powershell
-dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- hide --input C:\path\payload.zip --output C:\path\carrier.pdf
-dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- hide --input C:\path\payload.zip --output C:\path\carrier.pdf --carrier C:\path\visible.pdf
-dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- inspect --input C:\path\carrier.pdf
-dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- reveal --input C:\path\carrier.pdf --output C:\path\payload.zip
+dotnet run --project .\src\HideNSneak\HideNSneak.csproj -- hide --input C:\path\payload.zip --output C:\path\carrier.pdf
+dotnet run --project .\src\HideNSneak\HideNSneak.csproj -- hide --input C:\path\payload.zip --output C:\path\carrier.pdf --carrier C:\path\visible.pdf
+dotnet run --project .\src\HideNSneak\HideNSneak.csproj -- inspect --input C:\path\carrier.pdf
+dotnet run --project .\src\HideNSneak\HideNSneak.csproj -- reveal --input C:\path\carrier.pdf --output C:\path\payload.zip
 ```
 
 ```bash
-dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- hide --input /path/payload.zip --output /path/carrier.pdf
-dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- hide --input /path/payload.zip --output /path/carrier.pdf --carrier /path/visible.pdf
-dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- inspect --input /path/carrier.pdf
-dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- reveal --input /path/carrier.pdf --output /path/payload.zip
+dotnet run --project ./src/HideNSneak/HideNSneak.csproj -- hide --input /path/payload.zip --output /path/carrier.pdf
+dotnet run --project ./src/HideNSneak/HideNSneak.csproj -- hide --input /path/payload.zip --output /path/carrier.pdf --carrier /path/visible.pdf
+dotnet run --project ./src/HideNSneak/HideNSneak.csproj -- inspect --input /path/carrier.pdf
+dotnet run --project ./src/HideNSneak/HideNSneak.csproj -- reveal --input /path/carrier.pdf --output /path/payload.zip
 ```
 
 Use `--help` or `<command> --help` for command-specific help text.

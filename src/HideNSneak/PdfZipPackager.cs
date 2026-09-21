@@ -183,7 +183,7 @@ public sealed class PdfZipPackager
         }
 
         var header = new byte[5];
-        _ = await carrier.ReadAsync(header, cancellationToken);
+        await carrier.ReadExactlyAsync(header, cancellationToken);
         if (!header.SequenceEqual(Encoding.ASCII.GetBytes("%PDF-")))
         {
             throw new InvalidDataException("Carrier file does not begin with a PDF signature.");
@@ -192,7 +192,7 @@ public sealed class PdfZipPackager
         var tailLength = (int)Math.Min(2048, carrier.Length);
         carrier.Position = carrier.Length - tailLength;
         var tail = new byte[tailLength];
-        _ = await carrier.ReadAsync(tail, cancellationToken);
+        await carrier.ReadExactlyAsync(tail, cancellationToken);
         if (!Encoding.ASCII.GetString(tail).Contains("%%EOF", StringComparison.Ordinal))
         {
             throw new InvalidDataException("Carrier PDF does not contain a recognizable EOF marker near the end of the file.");
