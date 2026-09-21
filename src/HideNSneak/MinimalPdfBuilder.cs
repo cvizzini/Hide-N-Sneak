@@ -41,7 +41,7 @@ public static class MinimalPdfBuilder
 
     private static string BuildContentsObject()
     {
-        const string content = "BT\n/F1 18 Tf\n72 96 Td\n(Hide-N-Sneak carrier PDF) Tj\nET\n";
+        const string content = "BT\n/F1 18 Tf\n72 96 Td\n(PDF carrier document) Tj\nET\n";
         var contentLength = Encoding.ASCII.GetByteCount(content);
         return $"4 0 obj\n<< /Length {contentLength} >>\nstream\n{content}endstream\nendobj\n";
     }

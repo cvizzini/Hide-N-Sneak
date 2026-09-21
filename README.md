@@ -1,18 +1,17 @@
 # Hide-N-Sneak
 
-Hide-N-Sneak is a .NET 8 command-line proof of concept for packaging a ZIP file inside a valid PDF carrier and later restoring the original ZIP bytes.
+Hide-N-Sneak is a .NET 8 command-line utility for packaging a ZIP file inside a valid PDF carrier and later restoring the original ZIP bytes.
 
 > [!WARNING]
 > This tool is for authorized local file handling and interoperability testing only.
-> It does **not** provide security, concealment, or encryption.
+> It is not covert storage and appended payload data may be detected by forensic tooling.
 > Appending extra data after `%%EOF` can be detected by forensic tooling and may be rejected by strict PDF validators or some viewers.
-> Password protection is **not** implemented.
 
 ## What it does
 
-- `hide` embeds a ZIP payload after a visible PDF document.
-- `reveal` validates the embedded container and restores the original ZIP bytes.
-- `inspect` reports whether an embedded payload is present and whether its SHA-256 checksum still matches.
+- `hide` embeds a ZIP payload after a visible PDF document, optionally compressing and/or encrypting the embedded bytes.
+- `reveal` validates the embedded container and restores the original ZIP bytes (password required for encrypted payloads).
+- `inspect` reports whether an embedded payload is present and whether the SHA-256 checksum matches for unencrypted payloads.
 
 If you do not supply a carrier PDF, Hide-N-Sneak generates a minimal one-page PDF that opens in common readers.
 
@@ -43,35 +42,42 @@ Run the CLI from the repository root:
 ```powershell
 dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- hide --input C:\path\payload.zip --output C:\path\carrier.pdf
 dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- hide --input C:\path\payload.zip --output C:\path\carrier.pdf --carrier C:\path\visible.pdf
+dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- hide --input C:\path\payload.zip --output C:\path\carrier.pdf --password "<strong password>"
 dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- inspect --input C:\path\carrier.pdf
 dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- reveal --input C:\path\carrier.pdf --output C:\path\payload.zip
+dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- reveal --input C:\path\carrier.pdf --output C:\path\payload.zip --password "<strong password>"
 ```
 
 ```bash
 dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- hide --input /path/payload.zip --output /path/carrier.pdf
 dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- hide --input /path/payload.zip --output /path/carrier.pdf --carrier /path/visible.pdf
+dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- hide --input /path/payload.zip --output /path/carrier.pdf --password '<strong password>'
 dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- inspect --input /path/carrier.pdf
 dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- reveal --input /path/carrier.pdf --output /path/payload.zip
+dotnet run --project /home/runner/work/Hide-N-Sneak/Hide-N-Sneak/src/HideNSneak/HideNSneak.csproj -- reveal --input /path/carrier.pdf --output /path/payload.zip --password '<strong password>'
 ```
 
 Use `--help` or `<command> --help` for command-specific help text.
 
 ## Embedded format
 
-Hide-N-Sneak appends a custom container after the PDF content:
+The tool appends a custom versioned container after the PDF content:
 
 1. The carrier PDF bytes remain unchanged.
-2. A fixed application marker and version identify the embedded container.
-3. The header stores explicit lengths for the header and payload, the original filename and extension metadata, and the expected SHA-256 checksum.
-4. The original ZIP bytes follow directly after the header.
-5. A fixed footer marker stores the total appended-container length so the tool can locate the container from the end of the file.
+2. A neutral binary marker and version identify the embedded container (new output uses format v2).
+3. The header stores explicit lengths, payload flags, original filename/extension metadata, and SHA-256 of the original payload bytes.
+4. Payload bytes are optionally Brotli-compressed (only when meaningfully smaller) and optionally AES-GCM encrypted using a password-derived key (PBKDF2-SHA256 with random salt and nonce).
+5. A fixed binary footer marker stores the total appended-container length so the tool can locate the container from the end of the file.
+6. Extraction remains compatible with legacy v1 containers generated by older versions.
 
 During `inspect` and `reveal`, the tool validates:
 
 - the header marker and version;
 - recorded sizes against configurable limits;
 - that the container stays within file bounds;
-- that the payload checksum matches the recorded SHA-256 value.
+- that payload integrity checks succeed:
+  - encrypted payloads are authenticated by AES-GCM;
+  - unencrypted payloads are verified against the recorded SHA-256 hash of the original bytes.
 
 ## Limits
 
@@ -84,11 +90,10 @@ These environment variables can be set before running the CLI if you need lower 
 
 ## Limitations
 
-- This is packaging/obfuscation only, not secure storage.
+- This is packaging with optional password-based encryption, not covert storage.
 - The appended data is outside the formal PDF structure and may be visible to forensic tools.
 - Some PDF validators or viewers may reject files with trailing data after `%%EOF`.
 - The tool expects the footer marker to remain at the end of the file. If other tools append extra bytes afterwards, extraction will fail.
-- No encryption, password protection, or access control is included.
 
 ## Safety and legal guidance
 
