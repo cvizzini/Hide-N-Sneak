@@ -52,12 +52,13 @@ public static class CliApplication
                 return 0;
             }
 
-            var options = ParseOptions(args, ["--input", "--output", "--carrier"]);
+            var options = ParseOptions(args, ["--input", "--output", "--carrier", "--password"]);
             var input = GetRequiredOption(options, "--input");
             var output = GetRequiredOption(options, "--output");
             options.TryGetValue("--carrier", out var carrier);
+            options.TryGetValue("--password", out var password);
 
-            await _packager.HideAsync(input, output, carrier, HideNSneakLimits.FromEnvironment(), cancellationToken);
+            await _packager.HideAsync(input, output, carrier, password, HideNSneakLimits.FromEnvironment(), cancellationToken);
             await stdout.WriteLineAsync($"Created '{output}'.");
             return 0;
         }
@@ -70,11 +71,12 @@ public static class CliApplication
                 return 0;
             }
 
-            var options = ParseOptions(args, ["--input", "--output"]);
+            var options = ParseOptions(args, ["--input", "--output", "--password"]);
             var input = GetRequiredOption(options, "--input");
             var output = GetRequiredOption(options, "--output");
+            options.TryGetValue("--password", out var password);
 
-            var result = await _packager.RevealAsync(input, output, HideNSneakLimits.FromEnvironment(), cancellationToken);
+            var result = await _packager.RevealAsync(input, output, password, HideNSneakLimits.FromEnvironment(), cancellationToken);
             await stdout.WriteLineAsync($"Extracted {result.PayloadLength.ToString(CultureInfo.InvariantCulture)} bytes to '{output}'.");
             return 0;
         }
@@ -123,6 +125,10 @@ public static class CliApplication
             for (var index = 0; index < args.Length; index++)
             {
                 var argument = args[index];
+                if (string.Equals(argument, "-p", StringComparison.OrdinalIgnoreCase))
+                {
+                    argument = "--password";
+                }
 
                 if (IsHelpArgument(argument))
                 {
@@ -166,17 +172,16 @@ public static class CliApplication
 
         private async Task WriteHelpAsync()
         {
-            await stdout.WriteLineAsync("Hide-N-Sneak PDF ZIP utility");
+            await stdout.WriteLineAsync("PDF ZIP payload utility");
             await stdout.WriteLineAsync();
             await stdout.WriteLineAsync("Usage:");
-            await stdout.WriteLineAsync("  HideNSneak hide --input <zip> --output <pdf> [--carrier <pdf>]");
-            await stdout.WriteLineAsync("  HideNSneak reveal --input <pdf> --output <zip>");
+            await stdout.WriteLineAsync("  HideNSneak hide --input <zip> --output <pdf> [--carrier <pdf>] [--password <value>]");
+            await stdout.WriteLineAsync("  HideNSneak reveal --input <pdf> --output <zip> [--password <value>]");
             await stdout.WriteLineAsync("  HideNSneak inspect --input <pdf>");
             await stdout.WriteLineAsync();
             await stdout.WriteLineAsync("Warnings:");
-            await stdout.WriteLineAsync("  This tool only packages a ZIP inside a PDF carrier.");
-            await stdout.WriteLineAsync("  It does not provide security, concealment, or encryption.");
-            await stdout.WriteLineAsync("  Password protection is not implemented.");
+            await stdout.WriteLineAsync("  Appended payload data may still be detectable by forensic tooling.");
+            await stdout.WriteLineAsync("  Use strong unique passwords when enabling encryption.");
             await stdout.WriteLineAsync();
             await stdout.WriteLineAsync("Use '<command> --help' for command-specific details.");
         }
@@ -184,22 +189,24 @@ public static class CliApplication
         private async Task WriteHideHelpAsync()
         {
             await stdout.WriteLineAsync("Usage:");
-            await stdout.WriteLineAsync("  HideNSneak hide --input <zip> --output <pdf> [--carrier <pdf>]");
+            await stdout.WriteLineAsync("  HideNSneak hide --input <zip> --output <pdf> [--carrier <pdf>] [--password <value>]");
             await stdout.WriteLineAsync();
             await stdout.WriteLineAsync("Options:");
             await stdout.WriteLineAsync("  --input     Path to the ZIP payload to embed.");
             await stdout.WriteLineAsync("  --output    Path to the PDF file to create.");
             await stdout.WriteLineAsync("  --carrier   Optional existing PDF carrier. When omitted, a minimal PDF is generated.");
+            await stdout.WriteLineAsync("  --password, -p   Optional password to encrypt the embedded payload.");
         }
 
         private async Task WriteRevealHelpAsync()
         {
             await stdout.WriteLineAsync("Usage:");
-            await stdout.WriteLineAsync("  HideNSneak reveal --input <pdf> --output <zip>");
+            await stdout.WriteLineAsync("  HideNSneak reveal --input <pdf> --output <zip> [--password <value>]");
             await stdout.WriteLineAsync();
             await stdout.WriteLineAsync("Options:");
             await stdout.WriteLineAsync("  --input     Path to the PDF carrier.");
             await stdout.WriteLineAsync("  --output    Path to the ZIP file to create.");
+            await stdout.WriteLineAsync("  --password, -p   Password for decrypting an encrypted embedded payload.");
         }
 
         private async Task WriteInspectHelpAsync()

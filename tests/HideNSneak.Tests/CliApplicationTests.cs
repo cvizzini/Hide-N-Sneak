@@ -28,6 +28,11 @@ public sealed class CliApplicationTests : IDisposable
         Assert.Equal(0, reveal.ExitCode);
         Assert.StartsWith("%PDF-", Encoding.ASCII.GetString(await File.ReadAllBytesAsync(outputPdfPath)));
         Assert.Equal(await File.ReadAllBytesAsync(inputZipPath), await File.ReadAllBytesAsync(revealedZipPath));
+
+        var outputBytes = await File.ReadAllBytesAsync(outputPdfPath);
+        Assert.False(ContainsBytes(outputBytes, Encoding.ASCII.GetBytes(EmbeddedPdfContainer.HeaderMagicText)));
+        Assert.False(ContainsBytes(outputBytes, Encoding.ASCII.GetBytes(EmbeddedPdfContainer.FooterMagicText)));
+        Assert.False(ContainsBytes(outputBytes, Encoding.ASCII.GetBytes("Hide-N-Sneak")));
     }
 
     [Fact]
@@ -49,6 +54,42 @@ public sealed class CliApplicationTests : IDisposable
 
         var outputBytes = await File.ReadAllBytesAsync(outputPdfPath);
         Assert.True(outputBytes.AsSpan(0, originalCarrierBytes.Length).SequenceEqual(originalCarrierBytes));
+        Assert.Equal(await File.ReadAllBytesAsync(inputZipPath), await File.ReadAllBytesAsync(revealedZipPath));
+    }
+
+    [Fact]
+    public async Task HideAndReveal_RoundTripsWithPasswordEncryption()
+    {
+        var inputZipPath = WritePayloadZip("encrypted.zip");
+        var outputPdfPath = Path.Combine(_workspacePath, "encrypted.pdf");
+        var revealedZipPath = Path.Combine(_workspacePath, "revealed-encrypted.zip");
+
+        var hide = await RunCliAsync("hide", "--input", inputZipPath, "--output", outputPdfPath, "--password", "correct horse battery staple");
+        var reveal = await RunCliAsync("reveal", "--input", outputPdfPath, "--output", revealedZipPath, "-p", "correct horse battery staple");
+
+        Assert.Equal(0, hide.ExitCode);
+        Assert.Equal(0, reveal.ExitCode);
+        Assert.Equal(await File.ReadAllBytesAsync(inputZipPath), await File.ReadAllBytesAsync(revealedZipPath));
+    }
+
+    [Fact]
+    public async Task Hide_CompressesWhenPayloadIsHighlyCompressible()
+    {
+        var inputZipPath = Path.Combine(_workspacePath, "compressible.zip");
+        var outputPdfPath = Path.Combine(_workspacePath, "compressible.pdf");
+        var revealedZipPath = Path.Combine(_workspacePath, "revealed-compressible.zip");
+        await File.WriteAllBytesAsync(inputZipPath, Enumerable.Repeat((byte)'A', 256 * 1024).ToArray());
+
+        var hide = await RunCliAsync("hide", "--input", inputZipPath, "--output", outputPdfPath);
+        Assert.Equal(0, hide.ExitCode);
+
+        await using var outputStream = new FileStream(outputPdfPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        var descriptor = await EmbeddedPdfContainer.LocateAsync(outputStream, HideNSneakLimits.FromEnvironment(), CancellationToken.None);
+        Assert.NotNull(descriptor);
+        Assert.True(descriptor!.IsCompressed);
+
+        var reveal = await RunCliAsync("reveal", "--input", outputPdfPath, "--output", revealedZipPath);
+        Assert.Equal(0, reveal.ExitCode);
         Assert.Equal(await File.ReadAllBytesAsync(inputZipPath), await File.ReadAllBytesAsync(revealedZipPath));
     }
 
@@ -158,6 +199,45 @@ public sealed class CliApplicationTests : IDisposable
     }
 
     [Fact]
+    public async Task Reveal_FailsForWrongPassword()
+    {
+        var inputZipPath = WritePayloadZip("wrong-password.zip");
+        var outputPdfPath = Path.Combine(_workspacePath, "wrong-password.pdf");
+        var revealedZipPath = Path.Combine(_workspacePath, "wrong-password-out.zip");
+
+        await RunCliAsync("hide", "--input", inputZipPath, "--output", outputPdfPath, "--password", "good-password");
+        var reveal = await RunCliAsync("reveal", "--input", outputPdfPath, "--output", revealedZipPath, "--password", "bad-password");
+
+        Assert.Equal(1, reveal.ExitCode);
+        Assert.Contains("Unable to decrypt embedded payload", reveal.StdErr);
+        Assert.False(File.Exists(revealedZipPath));
+    }
+
+    [Fact]
+    public async Task Reveal_SupportsLegacyContainerFormat()
+    {
+        var payloadPath = WritePayloadZip("legacy.zip");
+        var pdfPath = Path.Combine(_workspacePath, "legacy-container.pdf");
+        var outputPath = Path.Combine(_workspacePath, "legacy-revealed.zip");
+        var payloadBytes = await File.ReadAllBytesAsync(payloadPath);
+        var hash = System.Security.Cryptography.SHA256.HashData(payloadBytes);
+        var header = EmbeddedPdfContainer.BuildHeader("legacy.zip", ".zip", payloadBytes.LongLength, hash, HideNSneakLimits.FromEnvironment());
+        var footer = EmbeddedPdfContainer.BuildFooter(header.LongLength + payloadBytes.LongLength + EmbeddedPdfContainer.FooterLength);
+
+        await using (var output = new FileStream(pdfPath, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            await output.WriteAsync(MinimalPdfBuilder.CreatePdf());
+            await output.WriteAsync(header);
+            await output.WriteAsync(payloadBytes);
+            await output.WriteAsync(footer);
+        }
+
+        var reveal = await RunCliAsync("reveal", "--input", pdfPath, "--output", outputPath);
+        Assert.Equal(0, reveal.ExitCode);
+        Assert.Equal(payloadBytes, await File.ReadAllBytesAsync(outputPath));
+    }
+
+    [Fact]
     public async Task HideAndReveal_RefuseOverwriteAndInputConflicts()
     {
         var inputZipPath = WritePayloadZip("conflict.zip");
@@ -219,7 +299,8 @@ public sealed class CliApplicationTests : IDisposable
     private static async Task CorruptHeaderMagicAsync(string pdfPath)
     {
         var data = await File.ReadAllBytesAsync(pdfPath);
-        var containerStart = GetContainerStart(data);
+        var descriptor = await LocateDescriptorAsync(data);
+        var containerStart = (int)descriptor.ContainerStart;
         data[containerStart] ^= 0x01;
         await File.WriteAllBytesAsync(pdfPath, data);
     }
@@ -227,9 +308,8 @@ public sealed class CliApplicationTests : IDisposable
     private static async Task CorruptPayloadByteAsync(string pdfPath)
     {
         var data = await File.ReadAllBytesAsync(pdfPath);
-        var containerStart = GetContainerStart(data);
-        var headerLength = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(containerStart + 10, 4));
-        var payloadIndex = containerStart + headerLength;
+        var descriptor = await LocateDescriptorAsync(data);
+        var payloadIndex = (int)descriptor.PayloadOffset;
         data[payloadIndex] ^= 0x01;
         await File.WriteAllBytesAsync(pdfPath, data);
     }
@@ -237,17 +317,23 @@ public sealed class CliApplicationTests : IDisposable
     private static async Task CorruptHeaderLengthAsync(string pdfPath, int headerLength)
     {
         var data = await File.ReadAllBytesAsync(pdfPath);
-        var containerStart = GetContainerStart(data);
+        var descriptor = await LocateDescriptorAsync(data);
+        var containerStart = (int)descriptor.ContainerStart;
         BinaryPrimitives.WriteInt32LittleEndian(data.AsSpan(containerStart + 10, 4), headerLength);
         await File.WriteAllBytesAsync(pdfPath, data);
     }
 
-    private static int GetContainerStart(byte[] data)
+    private static async Task<ContainerDescriptor> LocateDescriptorAsync(byte[] data)
     {
-        var footerMagic = Encoding.ASCII.GetBytes(EmbeddedPdfContainer.FooterMagicText);
-        Assert.True(data.AsSpan(data.Length - EmbeddedPdfContainer.FooterLength, 8).SequenceEqual(footerMagic));
-        var containerLength = BinaryPrimitives.ReadInt64LittleEndian(data.AsSpan(data.Length - 8, 8));
-        return data.Length - (int)containerLength;
+        await using var stream = new MemoryStream(data, writable: false);
+        var descriptor = await EmbeddedPdfContainer.LocateAsync(stream, HideNSneakLimits.FromEnvironment(), CancellationToken.None);
+        Assert.NotNull(descriptor);
+        return descriptor!;
+    }
+
+    private static bool ContainsBytes(byte[] source, byte[] value)
+    {
+        return source.AsSpan().IndexOf(value) >= 0;
     }
 
     private sealed record CliResult(int ExitCode, string StdOut, string StdErr);
